@@ -4,6 +4,7 @@ require File.join(File.dirname(`node --print "require.resolve('@react-native-com
 
 require 'json'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
+rn_maps_path = '../node_modules/react-native-maps'
 
 ENV['RCT_NEW_ARCH_ENABLED'] = podfile_properties['newArchEnabled'] == 'true' ? '1' : '0'
 
@@ -40,6 +41,8 @@ end
 target 'examplenative' do
   use_expo_modules!
   config = use_native_modules!
+  pod 'GoogleMaps', '7.3.0'
+  pod 'react-native-google-maps', :path => rn_maps_path
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
@@ -74,6 +77,7 @@ target 'examplenative' do
       target_installation_result.resource_bundle_targets.each do |resource_bundle_target|
         resource_bundle_target.build_configurations.each do |config|
           config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+          config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
         end
       end
     end

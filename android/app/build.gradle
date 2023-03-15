@@ -115,6 +115,7 @@ android {
 
     namespace "com.examplenative"
     defaultConfig {
+        manifestPlaceholders = [GOOGLE_API_KEY: 'AIzaSyBPRDv9ZAJWYeVvHsIbVmmDcqAULFug5PE']
         applicationId "com.examplenative"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
