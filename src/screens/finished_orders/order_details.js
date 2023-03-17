@@ -46,22 +46,22 @@ export default function OrderDetails({ route }) {
         <View style={{ flexDirection: 'column' }}>
           <View style={styles.itemDetails}>
             <Text style={styles.title}>Name:
-              <Text style={styles.data}> {item?.product_name}</Text>
+              <Text style={styles.data}> {item['cart_item']?.product_name}</Text>
             </Text>
             <Text style={styles.title}>Quantity:
-              <Text style={styles.data}> {item?.quantity}</Text>
+              <Text style={styles.data}> {item['cart_item']?.quantity}</Text>
             </Text>
           </View>
           <View style={styles.itemDetails}>
             <Text style={styles.title}>Unit Price:
-              <Text style={styles.data}>R$ {item?.price_in_cents / 100}</Text>
+              <Text style={styles.data}>R$ {item['cart_item']?.product_price_in_cents / 100}</Text>
             </Text>
             <Text style={styles.title}>Price In Cents:
-              <Text style={styles.data}>R$ {item?.price_in_cents * item?.quantity}</Text>
+              <Text style={styles.data}>R$ {item['cart_item']?.product_price_in_cents * item['cart_item']?.quantity}</Text>
             </Text>
           </View>
           <Text style={[styles.title, { marginLeft: "auto", marginTop: 10 }]}>Total:
-            <Text style={styles.totalData}>R$ {(item?.price_in_cents * item?.quantity) / 100}</Text>
+            <Text style={styles.totalData}>R$ {(item['cart_item']?.product_price_in_cents * item['cart_item']?.quantity) / 100}</Text>
           </Text>
         </View>
       </View>

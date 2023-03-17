@@ -9,75 +9,34 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
-  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/Feather";
 import { useCart } from "../../contexts";
-import { trackPromise } from "react-promise-tracker";
+import AnimatedEllipsis from 'react-native-animated-ellipsis';
 
-export default function Cart({ route }) {
-  const { cart_id } = route.params;
+export default function Cart() {
   const navigation = useNavigation();
   const [modalVisible, setModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
-  const [loading, setLoading] = useState(true);
   const {
     cart,
-    setCart,
     getItemIndex,
     removeFromCart,
     increment,
     decrement,
     clearCart,
+    activeItem,
+    loading
   } = useCart();
   const {
     total_items,
     total,
     price_in_cents,
     cart_items,
+    market_place_partners
   } = cart;
-
-  useFocusEffect(
-    useCallback(() => {
-      trackPromise(refreshList());
-    }, [])
-  );
-
-  async function refreshList() {
-    await api_client.get(`carts/${cart_id}`).then(({ data }) => {
-      setCart(data);
-    });
-    setLoading(false);
-  }
-
-  function deleteItem(item, index) {
-    api_client
-      .delete(`cart_items/${item}`)
-      .then(() => {
-        if (cart_items.length === 1) {
-          deleteCart();
-          return;
-        }
-        removeFromCart(index);
-        setItemToDelete(null);
-        setModalVisible(false);
-      })
-      .catch((err) => console.error(err));
-  }
-
-  function deleteCart() {
-    api_client
-      .delete(`carts/${cart_id}`)
-      .then(() => {
-        clearCart();
-        setItemToDelete(null);
-        setModalVisible(false);
-        navigation.goBack();
-      })
-      .catch((err) => console.error(err));
-  }
 
   function handleIncreaseQuantity(item) {
     const index = getItemIndex(item.product_id);
@@ -88,36 +47,17 @@ export default function Cart({ route }) {
   function handleDecreaseQuantity(item) {
     const index = getItemIndex(item.product_id);
     if (cart_items[index].quantity === 1) {
-      setModalVisible(true);
-      setItemToDelete({ ...item, index });
+      removeFromCart(index);
       return;
     }
     decrement(index);
   }
 
   function createOrder() {
-    setLoading(true);
-    let cart_items_order = cart_items.map((item) => {
-      return {
-        quantity: item.quantity,
-        cart_item_id: item.id,
-        product_price_in_cents: item.product_price_in_cents,
-      };
-    });
-
     api_client
-      .post("/order_items", {
-        order_items: {
-          cart_id,
-          cart_items: cart_items_order,
-        },
-      })
-      .then(() => navigation.navigate("Home"))
+      .post(`/carts/${cart.id}/checkout`)
+      .then(() => [navigation.navigate("Home"),clearCart()])
       .catch((err) => console.error(err))
-      .finally(() => {
-        clearCart();
-        setLoading(false);
-      });
   }
 
   const Item = ({ item }) => {
@@ -131,21 +71,25 @@ export default function Cart({ route }) {
             </Text>
 
             <Text style={styles.title}>Total Price In Cents:
-              <Text style={styles.data}> {item?.product_price_in_cents * item?.quantity}</Text>
+              <Text style={styles.data}> {item?.total_price_in_cents}</Text>
             </Text>
 
             <Text style={styles.title}>Total:
-              <Text style={styles.data}> {(item?.product_price_in_cents * item?.quantity) / 100}</Text>
+              <Text style={styles.data}> {item?.total_price}</Text>
             </Text>
           </View>
 
           <View style={styles.quantityHandler}>
-            <TouchableOpacity onPress={() => item.quantity > 0 && handleDecreaseQuantity(item)}>
-              <Icon name="minus-circle" size={20} color={item.quantity === 0 ? "#ccc" : "red"} disabled={item.quantity === 0 ? true : false} />
+            <TouchableOpacity onPress={() => item.quantity > 0 && handleDecreaseQuantity(item)} disabled={loading && activeItem != getItemIndex(item.product_id)}>
+              <Icon 
+                name="minus-circle" 
+                size={20} 
+                color={item.quantity === 0 || loading && activeItem != getItemIndex(item.product_id) ? "#ccc" : "red"} 
+                disabled={item.quantity === 0 ? true : false} />
             </TouchableOpacity>
             <Text style={styles.counter}>{item.quantity}</Text>
-            <TouchableOpacity onPress={() => handleIncreaseQuantity(item)}>
-              <Icon name="plus-circle" size={20} color="#2196F3" />
+            <TouchableOpacity onPress={() => handleIncreaseQuantity(item)} disabled={loading && activeItem != getItemIndex(item.product_id)}>
+              <Icon name="plus-circle" size={20} color={loading && activeItem != getItemIndex(item.product_id) ? "#ccc" : "#2196F3"} />
             </TouchableOpacity>
           </View>
 
@@ -177,7 +121,7 @@ export default function Cart({ route }) {
               </Pressable>
               <Pressable
                 style={[styles.button, styles.buttonDelete]}
-                onPress={() => deleteItem(item.id, item.index)}
+                onPress={() => [removeFromCart(getItemIndex(item.product_id)), setModalVisible(!modalVisible)]}
               >
                 <Text style={styles.textStyle}>Yes</Text>
               </Pressable>
@@ -190,14 +134,8 @@ export default function Cart({ route }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {loading ?
-        <View style={styles.loaderView}>
-          <ActivityIndicator size="large" color="#2196F3" />
-        </View>
-        :
-        <>
           <View style={styles.buttonToReturn}>
-            <TouchableOpacity onPress={() => deleteCart()}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
               <Text><Icon name="arrow-left" /> Back</Text>
             </TouchableOpacity>
           </View>
@@ -207,17 +145,23 @@ export default function Cart({ route }) {
           </View>
 
           <View style={{ flex: 1 }}>
-
             <View style={{ marginBottom: 20 }}>
-              {cart_items.length > 0 &&
-                <FlatList
-                  data={cart_items}
-                  renderItem={Item}
-                  keyExtractor={item => item.id}
-                />
-              }
+              {market_place_partners.length > 0 &&
+                market_place_partners.map((item) => (
+                  <View style={{ marginBottom: 20 }} key={item.id}>
+                    <Text style={styles.marketPlaceName}>{item.name}</Text>
+                    <FlatList
+                      data={cart_items.filter(
+                        (cart_item) =>
+                          cart_item.market_place_partner_id === item.id
+                      )}
+                      scrollEnabled={false}
+                      renderItem={Item}
+                      keyExtractor={(item) => item.id}
+                    />
+                  </View>
+                ))}
             </View>
-
           </View>
           <View style={styles.divider} />
 
@@ -226,44 +170,60 @@ export default function Cart({ route }) {
               <Text style={styles.headerTitle}> Summary </Text>
             </View>
           </View>
+          {
+            loading ?
+            <View style={{ justifyContent: 'center', alignItems: 'center', height: 60 }}>
+              <AnimatedEllipsis style={{
+                fontSize: 40,
+                color: '#2196F3',
+              }} 
+                useNativeDriver={true}
+              />
+            </View>
+            :
+            <>
+              <View style={styles.dataRow}>
+                <Text style={styles.summaryDataTitle}>Total Price: </Text>
+                <Text style={styles.summaryData}> R$  {total} </Text>
+              </View>
 
-          <View style={styles.dataRow}>
-            <Text style={styles.summaryDataTitle}>Total Price: </Text>
-            <Text style={styles.summaryData}> R$ {total} </Text>
-          </View>
+              <View style={styles.dataRow}>
+                <Text style={styles.summaryDataTitle}>Total Price In Cents: </Text>
+                <Text style={styles.summaryData}> R$ {price_in_cents} </Text>
+              </View>
 
-          <View style={styles.dataRow}>
-            <Text style={styles.summaryDataTitle}>Total Price In Cents: </Text>
-            <Text style={styles.summaryData}> R$ {price_in_cents} </Text>
-          </View>
-
-          <View style={styles.lastData}>
-            <Text style={styles.summaryDataTitle}>Items: </Text>
-            <Text style={styles.summaryData}> {total_items} </Text>
-          </View>
+              <View style={styles.lastData}>
+                <Text style={styles.summaryDataTitle}>Items: </Text>
+                <Text style={styles.summaryData}> {total_items} </Text>
+              </View>
+            </>
+          }
 
           <View style={{ padding: 5 }}>
-            <TouchableOpacity onPress={() => createOrder()} style={styles.orderButton}>
-              <Text style={{ color: "#fff" }}>Buy</Text>
+            <TouchableOpacity onPress={() => createOrder()} style={[styles.orderButton, { opacity: loading && 0.5}]} disabled={loading}>
+              { 
+                loading ?
+                <ActivityIndicator size="small" color="#fff" />
+                :
+                <Text style={{ color: "#fff" }}>Buy</Text>
+              }
             </TouchableOpacity>
           </View>
-          {modalVisible && itemToDelete && <ModalComponent item={itemToDelete} setModalVisible={setModalVisible} />}
-        </>
-      }
+        {modalVisible && itemToDelete && <ModalComponent item={itemToDelete} setModalVisible={setModalVisible} />}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerTitle: { 
-    fontSize: 15, 
-    fontWeight: 'bold' 
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: 'bold'
   },
-  sectionTitle: { 
-    justifyContent: 'center', 
-    flexDirection: 'row', 
-    padding: 15 
+  sectionTitle: {
+    justifyContent: 'center',
+    flexDirection: 'row',
+    padding: 15
   },
   title: {
     fontWeight: 'bold',
@@ -279,26 +239,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#2196F3",
     borderColor: "#4286f4"
   },
-  summaryDataView: { 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    marginVertical: 5 
+  summaryDataView: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginVertical: 5
   },
-  dataRow: { 
+  dataRow: {
     paddingHorizontal: 15,
     flexDirection: 'row',
-     justifyContent: 'space-between'
+    justifyContent: 'space-between'
   },
-  summaryDataTitle: { 
+  summaryDataTitle: {
     fontWeight: "bold",
-     color: "#000"
+    color: "#000"
   },
   summaryData: { color: "#6d6d6d" },
-  lastData: { 
-    paddingHorizontal: 15, 
-    marginBottom: 10, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between' 
+  lastData: {
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between'
   },
   data: {
     fontWeight: 'normal',
@@ -318,18 +278,18 @@ const styles = StyleSheet.create({
     elevation: 8,
     backgroundColor: 'white'
   },
-  itemContent: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between' 
+  itemContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
   },
-  quantityHandler: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 10 
+  quantityHandler: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10
   },
-  counter: { 
-    paddingHorizontal: 15, 
-    color: "#6d6d6d" 
+  counter: {
+    paddingHorizontal: 15,
+    color: "#6d6d6d"
   },
   modalView: {
     justifyContent: "center",
@@ -376,14 +336,20 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: "center"
   },
-  loaderView: { 
-    alignItems: "center", 
-    justifyContent: "center", 
-    flex: 1 
+  loaderView: {
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1
   },
-  divider: { 
-    borderBottomWidth: 1, 
-    marginBottom: 10, 
-    borderColor: '#cecece' 
+  divider: {
+    borderBottomWidth: 1,
+    marginBottom: 10,
+    borderColor: '#cecece'
+  },
+  marketPlaceName: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#4286f4",
+    textAlign: "center",
   },
 });

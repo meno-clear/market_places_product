@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import api_client from '../../config/api_client';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -10,9 +10,19 @@ import { useCart } from '../../contexts/cart';
 export default function Products() {
   const navigation = useNavigation();
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { cart, getItemIndex, addToCart, increment, decrement, getItem, clearCart } = useCart();
-  const { total_items, total, cart_items } = cart;
+  const {
+    cart,
+    getItemIndex,
+    addToCart,
+    increment,
+    removeFromCart,
+    decrement,
+    getItem,
+    clearCart,
+    loading,
+    activeItem
+  } = useCart();
+  const { total_items, total } = cart;
 
   useFocusEffect(
     useCallback(() => {
@@ -31,16 +41,34 @@ export default function Products() {
       })
       setProducts(responseWithQuantity);
     });
-    setLoading(false)
-  } 
+  }
+
+  const deleteItem = (id) => {
+    Alert.alert(
+      'Remover produto do carrinho',
+      'Tem certeza que deseja remover este produto?',
+      [
+        {
+          text: 'Não',
+          onPress: () => { },
+          style: 'cancel',
+        },
+        {
+          text: 'Sim',
+          onPress: () => removeFromCart(getItemIndex(id))
+        },
+      ],
+    )
+  }
 
   function handleIncreaseQuantity(item) {
+    console.log(activeItem && activeItem != getItemIndex(item.id))
     const index = getItemIndex(item.id)
     if (index != -1) {
       increment(index)
       return;
     }
-    addToCart({...item})
+    addToCart({ ...item })
   }
 
   function handleDecreaseQuantity(item) {
@@ -48,33 +76,34 @@ export default function Products() {
     decrement(index)
   }
 
-  function createCart() {
-    setLoading(true);
-    api_client
-      .post("/cart_items", { items: {cart_items: cart_items} })
-      .then(({data}) => {
-        clearCart()
-        navigation.navigate("Cart", { cart_id: data.id })
-      } 
+  const TitleWithData = ({ title, product, data }) => {
+
+    if (!data?.market_place_partner) {
+      return (
+        <Text style={[styles.title, { color: product ? '#4286f4' : '#000' }]}>{title}
+          <Text style={[styles.data, { color: product ? '#2196F3' : '#6d6d6d' }]}> {data}</Text>
+        </Text>
       )
-      .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
-  }
+    }
+    return (
+      <Text style={[styles.title, { color: product ? '#4286f4' : '#000' }]}>Market Place:{' '}
+        <Text style={[styles.data, { color: product ? '#2196F3' : '#6d6d6d' }]}>{data?.market_place_partner}</Text>
+      </Text>
+    )
+  };
 
-  const TitleWithData = ({title, product, data}) => (
-    <Text style={[styles.title, { color: product ? '#4286f4' : '#000' }]}>{title}
-      <Text style={[styles.data, { color: product ? '#2196F3' : '#6d6d6d' }]}> {data}</Text>
-    </Text>
-  );
-
-  const ButtonQuantity = ({item, product}) => (
+  const ButtonQuantity = ({ item, product }) => (
     <View style={styles.quantityHandler}>
       <TouchableOpacity onPress={() => product && handleDecreaseQuantity(item)}>
-        <Icon name='minus-circle' size={20} color={ !product ? '#ccc' : 'red'} disabled={ !product ? true : false} />
+        <Icon 
+          name='minus-circle' 
+          size={20} 
+          color={!product || loading && activeItem != getItemIndex(item.id) ? '#ccc' : 'red'} 
+          disabled={!product || loading && activeItem != getItemIndex(item.id)} />
       </TouchableOpacity>
       <Text style={styles.counter}>{product?.quantity || 0}</Text>
-      <TouchableOpacity onPress={() => handleIncreaseQuantity(item)}>
-        <Icon name='plus-circle' size={20} color='#2196F3' />
+      <TouchableOpacity onPress={() => handleIncreaseQuantity(item)} disabled={loading && activeItem != getItemIndex(item.id)}>
+        <Icon name='plus-circle' size={20} color={loading && activeItem != getItemIndex(item.id) ? '#ccc' : '#2196F3'} />
       </TouchableOpacity>
     </View>
   );
@@ -82,80 +111,78 @@ export default function Products() {
   const Item = ({ item }) => {
     const product = getItem(item.id)
     return (
-      <View style={[styles.item,
-        {
-          backgroundColor: "white",
-          borderColor: product ? "#4286f4" : "#cecece",
-          shadowColor: product ? "#2196F3" : "#000"
-        }
-      ]}>
+      <TouchableOpacity style={[styles.item,
+      {
+        backgroundColor: "white",
+        borderColor: product ? "#4286f4" : "#cecece",
+        shadowColor: product ? "#2196F3" : "#000"
+      }
+      ]}
+        onLongPress={() => deleteItem(item.id)}>
         <View style={styles.itemContent}>
           <View style={{ flexDirection: 'column' }}>
             <TitleWithData title='Name:' product={product} data={item?.name} />
             <TitleWithData title='Price In Cents:' product={product} data={item?.price_in_cents} />
             <TitleWithData title='Price:' product={product} data={item?.price_in_cents / 100} />
+            <TitleWithData title='Name:' data={{ name: item?.name, market_place_partner: item?.market_place_name }} />
           </View>
           <ButtonQuantity item={item} product={product} />
         </View>
-      </View>
+      </TouchableOpacity>
     )
   }
 
   const ButtonCheckout = () => (
-    <TouchableOpacity onPress={() => createCart()} style={[styles.cartButton, {width: '100%'}]}>
-
+    <TouchableOpacity onPress={() => navigation.navigate("Cart")} style={[styles.cartButton, { width: '100%' }]} disabled={loading}>
       <View style={styles.icon}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{total_items}</Text>
         </View>
         <Icon name="shopping-cart" size={25} color="#fff" />
       </View>
-
-      <Text style={{ color: "#fff", marginRight: !total ? 45 : 0 }}>Add to Cart</Text>
-      <Text style={{ color: "#fff" }}>{total > 0 && `R$${total}`}</Text>
+      {loading ?
+        <ActivityIndicator size="small" color="#fff" />
+        :
+        <>
+          <Text style={{ color: "#fff", marginRight: !total ? 45 : 0 }}>Add to Cart</Text>
+          <Text style={{ color: "#fff" }}>{total > 0 && `R$${total}`}</Text>
+        </>
+      }
     </TouchableOpacity>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      {loading ?
-        <View style={styles.loaderView}>
-          <ActivityIndicator size="large" color="#2196F3" />
-        </View>
-        :
+      <ReturnButton />
+      {products.length > 0 ?
         <>
-          <ReturnButton />
-          {products.length > 0 ?
-            <>
-              <View style={styles.sectionTitle}>
-                <Text style={styles.headerTitle}> PRODUCTS LIST</Text>
-              </View>
-              <View style={styles.list}>
-                <View style={{ marginBottom: 20 }}>
-                  {products.length > 0 &&
-                    <FlatList
-                      data={products}
-                      renderItem={Item}
-                      keyExtractor={item => item.id}
-                    />
-                  }
-                </View>
-                <View style={{ padding: 5 }}>
-                  {!!total &&
-                    <ButtonCheckout />
-                  }
-                </View>
-              </View>
-            </>
-            :
-            <View style={styles.loaderView}>
-              <Text>You have no products to show.</Text>
-              <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("ProductList")}>
-                <Text style={{ color: "#fff" }}><Icon name="plus" size={16} /> Add Products</Text>
-              </TouchableOpacity>
+          <View style={styles.sectionTitle}>
+            <Text style={styles.headerTitle}> PRODUCTS LIST</Text>
+          </View>
+          <View style={styles.list}>
+            <View style={{ marginBottom: 20 }}>
+              {products.length > 0 &&
+                <FlatList
+                  data={products}
+                  renderItem={Item}
+                  keyExtractor={item => item.id}
+                />
+              }
             </View>
-          }
+            <View style={{ padding: 5 }}>
+              {!!total &&
+                <ButtonCheckout />
+              }
+            </View>
+          </View>
         </>
+        :
+        <View style={styles.loaderView}>
+          <Text>You have no products to show.</Text>
+          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("ProductList")}>
+            <Text style={{ color: "#fff" }}><Icon name="plus" size={16} /> Add Products</Text>
+          </TouchableOpacity>
+        </View>
       }
     </SafeAreaView>
   );

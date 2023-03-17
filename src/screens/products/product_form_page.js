@@ -40,11 +40,9 @@ export default function ProductFormPage({route}) {
 
   const handleSubmit = () => {
     const product = {
-      
       name: name,
-      
-      price_in_cents: price_in_cents
-      
+      price_in_cents: price_in_cents,
+      market_place_partner_id: 1,
     };
 
     if (route?.params?.id) {
